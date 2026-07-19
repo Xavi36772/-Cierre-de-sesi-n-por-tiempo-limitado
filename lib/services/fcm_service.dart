@@ -3,41 +3,52 @@ import '../services/encrypted_storage.dart';
 import 'package:flutter/foundation.dart';
 
 class FcmService {
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final EncryptedStorage _storage = EncryptedStorage();
+  FirebaseMessaging? _messaging;
 
   String? _currentFcmToken;
-  VoidCallback? onSensitiveDataWiped;
+  void Function()? onSensitiveDataWiped;
 
   String? get currentFcmToken => _currentFcmToken;
 
   Future<void> initialize() async {
-    NotificationSettings settings = await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    if (settings.authorizationStatus == AuthorizationStatus.denied) {
-      debugPrint('Permiso de notificaciones denegado');
+    try {
+      _messaging = FirebaseMessaging.instance;
+    } catch (e) {
+      debugPrint('FCM not available: $e');
       return;
     }
 
-    _currentFcmToken = await _messaging.getToken();
-    if (_currentFcmToken != null) {
-      await _storage.saveFcmToken(_currentFcmToken!);
-    }
+    try {
+      NotificationSettings settings = await _messaging!.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
 
-    _messaging.onTokenRefresh.listen((newToken) async {
-      _currentFcmToken = newToken;
-      await _storage.saveFcmToken(newToken);
-    });
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        debugPrint('Permiso de notificaciones denegado');
+        return;
+      }
 
-    FirebaseMessaging.onMessage.listen(_handleMessage);
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
-    RemoteMessage? initialMessage = await _messaging.getInitialMessage();
-    if (initialMessage != null) {
-      _handleMessage(initialMessage);
+      _currentFcmToken = await _messaging!.getToken();
+      if (_currentFcmToken != null) {
+        await _storage.saveFcmToken(_currentFcmToken!);
+      }
+
+      _messaging!.onTokenRefresh.listen((newToken) async {
+        _currentFcmToken = newToken;
+        await _storage.saveFcmToken(newToken);
+      });
+
+      FirebaseMessaging.onMessage.listen(_handleMessage);
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
+      RemoteMessage? initialMessage = await _messaging!.getInitialMessage();
+      if (initialMessage != null) {
+        _handleMessage(initialMessage);
+      }
+    } catch (e) {
+      debugPrint('FCM init error: $e');
     }
   }
 
@@ -64,5 +75,3 @@ class FcmService {
     await _storage.deleteSensitiveData();
   }
 }
-
-typedef VoidCallback = void Function();
